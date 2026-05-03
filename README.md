@@ -131,14 +131,162 @@ sseManager는 현재 연결된 클라이언트를 `Map<userId, res>` 형태로 �
 댓글 알림은 특정 유저에게만, 공지사항 알림은 접속 중인 전체 유저에게 전송되며
 SSE 연결 흐름은 클라이언트가 스트림에 접속하여 이벤트를 수신하기까지의 과정을 나타낸다.
 
+#### SSE 연결 흐름
+
+<img width="426" height="891" alt="sse_connenction" src="https://github.com/user-attachments/assets/5e8b62cd-ae02-4f80-9783-a885b41a4b13" />
+
+```
+함수 handleSSEConnection(req, res):
+  토큰 = req.headers.authorization
+  만약 인증실패(토큰):
+    반환 401 Unauthorized
+
+  SSE 헤더 설정(res, "text/event-stream")
+  userId = DB에서 사용자 조회(토큰.sub)
+  addClient(userId, res)
+  이벤트 전송(res, "connected")
+
+  req.on("close"):
+    removeClient(userId)
+```
+
+
 #### 댓글 알림 흐름
 
 <img width="421" height="721" alt="notification1" src="https://github.com/user-attachments/assets/1e45c85e-1436-4b1d-833d-6402833c2117" />
+
+```
+함수 handleCommentCreate(req, res):
+  토큰 = req.headers.authorization
+  만약 인증실패(토큰):
+    반환 401 Unauthorized
+
+  댓글 = { post_id, user_id, content }
+  DB에 댓글 저장(댓글)
+
+  게시글 = DB에서 게시글 조회(post_id)
+  만약 게시글.user_id != 댓글.user_id:
+    notifyNewComment(게시글.user_id, 댓글)
+```
 
 #### 공지사항 알림 흐름
 
 <img width="421" height="631" alt="notification2" src="https://github.com/user-attachments/assets/9bc16471-f328-4a6a-a418-6f6ee6e37a12" />
 
-#### SSE 연결 흐름
+```
+함수 crawlAndNotify():
+  공지목록 = 학교사이트크롤링()
 
-![SSE 연결 순서도](sse_connection_flow.png)
+  반복 공지 in 공지목록:
+    만약 DB에 공지 존재(공지.list_no):
+      DB 업데이트(공지)
+    아니면:
+      DB에 공지 저장(공지)
+      notifyNewNotice(공지)
+
+함수 notifyNewNotice(공지):
+  반복 (userId, res) in clients:
+    이벤트 전송(res, "new_notice", 공지)
+```
+
+## 4. 구현
+
+### 4.1 구현 환경
+
+| 항목 | 내용 |
+|------|------|
+| 개발 언어 | JavaScript 24.11(Node.js) |
+| 프레임워크 | Express.js 4.22 |
+| 데이터베이스 | MongoDB Atlas |
+| ODM | Mongoose 8.23 |
+| 인증 | Auth0 (express-oauth2-jwt-bearer) |
+| 개발 도구 | VS Code, Postman |
+| 서버 구조 | REST API 서버 (클라이언트 요청 → Express 라우터 → MongoDB) |
+
+### 4.2 구현 내용
+
+#### 데이터베이스 스키마 연동
+
+Mongoose ODM을 사용하여 MongoDB 컬렉션별 스키마를 정의한다.
+각 모델은 필드 타입, 필수 여부, 기본값을 명시하며 컬렉션 간 참조는 ObjectId로 처리한다.
+
+```javascript
+// User 모델 
+const userSchema = new mongoose.Schema({
+  auth0_id: { type: String, required: true, unique: true },
+  student_id: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  grade: { type: Number, required: true },
+  major: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' }
+}, { timestamps: { createdAt: 'created_at', updatedAt: false } });
+
+#### SSE 인프라 구축
+
+`sseManager.js`에서 연결된 클라이언트를 `Map<userId, res>` 형태로 관리한다.
+클라이언트 등록/제거 및 이벤트 전송 기능을 별도 모듈로 분리하여 댓글 API와 크롤러에서 호출할 수 있도록 구현하였다.
+```javascript
+const clients = new Map();
+
+function addClient(userId, res) { clients.set(userId, res); }
+function removeClient(userId) { clients.delete(userId); }
+
+function sendToUser(userId, event, data) {
+  const res = clients.get(userId);
+  if (res) {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  }
+}
+
+function sendToAll(event, data) {
+  clients.forEach((res) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  });
+}
+```
+
+#### SSE 스트림 엔드포인트
+
+Auth0 인증을 거친 유저만 SSE 연결을 맺을 수 있도록 `authMiddleware`를 적용한다.
+연결 성공 시 `connected` 이벤트를 전송하고, 연결 종료 시 Map에서 자동 제거된다.
+
+```javascript
+router.get('/stream', authMiddleware, async (req, res) => {
+  const user = await User.findOne({ auth0_id: req.user.sub });
+  if (!user) return res.status(401).json({ message: 'DB에 등록되지 않은 사용자입니다.' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  addClient(user._id.toString(), res);
+  res.write(`event: connected\n`);
+  res.write(`data: ${JSON.stringify({ message: '알림 연결 성공' })}\n\n`);
+
+  req.on('close', () => { removeClient(user._id.toString()); });
+});
+```
+
+#### 댓글 알림 구현
+
+댓글 작성 시 게시글 작성자와 댓글 작성자가 다른 경우에만 알림을 전송한다.
+본인 게시글에 본인이 댓글을 작성한 경우에는 알림을 전송하지 않는다.
+
+```javascript
+if (post.user_id.toString() !== user._id.toString()) {
+  notifyNewComment(post.user_id, newComment);
+}
+```
+
+#### 공지사항 알림 연결
+
+크롤러에서 새 공지 저장 후 `notifyNewNotice()`를 호출하여 접속 중인 전체 유저에게 알림을 전송한다.
+
+```javascript
+await newNotice.save();
+notifyNewNotice(newNotice);
+```
