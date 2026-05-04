@@ -115,7 +115,7 @@ sseManager는 현재 연결된 클라이언트를 `Map<userId, res>` 형태로 �
 
 **모듈 간 연결 구조**
 
-<img width="725" height="411" alt="module" src="https://github.com/user-attachments/assets/32820451-c094-48d9-9cc4-0a8a27916634" />
+<img width="621" height="391" alt="제목 없는 다이어그램 drawio (10)" src="https://github.com/user-attachments/assets/892a2a47-f5d1-4b89-8b31-4e5abd724aaf" />
 
 **클라이언트 연결 관리**
 
@@ -133,7 +133,8 @@ SSE 연결 흐름은 클라이언트가 스트림에 접속하여 이벤트를 �
 
 #### SSE 연결 흐름
 
-<img width="426" height="891" alt="sse_connenction" src="https://github.com/user-attachments/assets/5e8b62cd-ae02-4f80-9783-a885b41a4b13" />
+<img width="426" height="891" alt="제목 없는 다이어그램 drawio (9)" src="https://github.com/user-attachments/assets/164cd271-7f36-4bb4-93fe-69f234fb81be" />
+
 
 ```
 함수 handleSSEConnection(req, res):
