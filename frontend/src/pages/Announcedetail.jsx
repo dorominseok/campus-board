@@ -1,56 +1,76 @@
 import React from 'react';
-import './Announcedetail.css';
+import { useLocation } from 'react-router-dom';
 import announceLogo from '../assets/announce.png';
 import { FaReply } from 'react-icons/fa';
-import { AiOutlineHeart } from 'react-icons/ai';
+import './Board.css';
 
 const AnnounceDetail = () => {
-  const data = {
-    title: "제목",
-    author: "작성자",
-    date: "20xx.xx.xx.",
-    content: "내용",
-    filename: "cjaqnvkdlf.pdf"
+  const location = useLocation();
+  const notice = location.state?.notice;
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
   };
+
+  if (!notice) {
+    return (
+      <main className="main-container">
+        <div className="board-card large">
+          <div className="board-header">
+            <div className="header-left">
+              <img src={announceLogo} alt="공지사항" className="header-icon-img" />
+              <h2 className="board-title">공지사항</h2>
+            </div>
+            <button className="back-btn" onClick={() => window.history.back()}>
+              <FaReply style={{ transform: 'scaleX(-1)' }} />
+            </button>
+          </div>
+          <p className="board-status">공지사항을 찾을 수 없습니다.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="main-container">
-      <div className="board-card detail-card">
-        <div className="board-header detail-header">
+      <div className="board-card large">
+        <div className="board-header">
           <div className="header-left">
-            <span className="board-icon">
-              <img src={announceLogo} alt="icon" className="header-icon-img" />
-            </span>
+            <img src={announceLogo} alt="공지사항" className="header-icon-img" />
             <h2 className="board-title">공지사항</h2>
           </div>
-          <button className="back-button" onClick={() => window.history.back()}>
-             <FaReply style={{ transform: 'scaleX(-1)' }} />
+          <button className="back-btn" onClick={() => window.history.back()}>
+            <FaReply style={{ transform: 'scaleX(-1)' }} />
           </button>
         </div>
 
-        <div className="post-meta">
-          <div className="meta-row">
-            <div className="meta-item"><strong>제목 :</strong> {data.title}</div>
-          </div>
-          <div className="meta-row split">
-            <div className="meta-item"><strong>작성자 :</strong> {data.author}</div>
-            <div className="meta-item date"><strong>작성일 :</strong> {data.date}</div>
+        <div className="detail-meta">
+          <h3 className="detail-title">{notice.title}</h3>
+          <div className="detail-info-row">
+            <div className="detail-info-left">
+              <div className="detail-info-item">
+                <span className="label">작성자</span>
+                <span className="value">{notice.author}</span>
+              </div>
+              <div className="detail-info-item">
+                <span className="label">작성일</span>
+                <span className="value">{formatDate(notice.created_at)}</span>
+              </div>
+            </div>
+            {notice.view_count !== undefined && (
+              <span className="detail-views">조회 {notice.view_count.toLocaleString()}</span>
+            )}
           </div>
         </div>
 
-        <div className="board-content detail-content">
-          <div className="content-inner">
-            {data.content}
-          </div>
-        </div>
+        <div className="detail-body detail-body-html" dangerouslySetInnerHTML={{ __html: notice.content }} />
 
-        <div className="detail-footer">
-          <div className="file-section">
-            <strong>첨부파일 :</strong> <span className="file-link">{data.filename}</span>
-          </div>
-          <button className="like-button">
-            <AiOutlineHeart />
-          </button>
+        <div className="footer">
+          <span />
+          <a href={notice.source_url} target="_blank" rel="noreferrer" className="source-btn">
+            원문 보기
+          </a>
         </div>
       </div>
     </main>
